@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Check, Mail, Phone, User, X, Briefcase, ChevronRight, Handshake, Calendar, AlertCircle } from 'lucide-react';
+import { db } from '../firebase';
+import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { handleFirestoreError, OperationType } from '../utils/firebaseErrorHandler';
 
 interface LeadCaptureModalProps {
   isOpen: boolean;
@@ -35,7 +38,7 @@ export default function LeadCaptureModal({ isOpen, onClose, businessName, primar
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !email || !phone) {
       setError('Please fill in all standard contact fields.');
@@ -44,11 +47,30 @@ export default function LeadCaptureModal({ isOpen, onClose, businessName, primar
     setError('');
     setIsSubmitting(true);
     
-    // Simulate API registration to BuyZently
-    setTimeout(() => {
+    const leadRef = doc(collection(db, 'leads'));
+    const leadId = leadRef.id;
+
+    try {
+      await setDoc(leadRef, {
+        name,
+        email,
+        phone,
+        businessName: businessName || 'None Specified',
+        primaryGoal: primaryGoal || 'Acquisition',
+        selectedServices,
+        createdAt: serverTimestamp()
+      });
       setIsSubmitting(false);
       setSubmitted(true);
-    }, 1200);
+    } catch (err: any) {
+      console.error('Error saving lead:', err);
+      try {
+        handleFirestoreError(err, OperationType.WRITE, `leads/${leadId}`);
+      } catch (finalError: any) {
+        setError('Failed to submit consultation request. Please try again.');
+        setIsSubmitting(false);
+      }
+    }
   };
 
   const handleReset = () => {

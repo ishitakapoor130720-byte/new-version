@@ -1,0 +1,48 @@
+{
+  "entities": {
+    "Lead": {
+      "title": "Lead",
+      "description": "Form submission from the landing page requesting consulting and setup.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Full name of the lead"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Work email address"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Phone / WhatsApp number"
+        },
+        "businessName": {
+          "type": "string",
+          "description": "Name of the business"
+        },
+        "primaryGoal": {
+          "type": "string",
+          "description": "Primary goal of the campaign"
+        },
+        "selectedServices": {
+          "type": "array",
+          "description": "Selected digital agency services"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server submission timestamp"
+        }
+      },
+      "required": ["name", "email", "phone", "businessName", "primaryGoal", "selectedServices", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/leads/{leadId}": {
+      "schema": "Lead",
+      "description": "User lead submissions collection"
+    }
+  }
+}
