@@ -721,6 +721,165 @@ Help them iterate, elaborate, write ad copy, write reel scripts, or explain mark
   }
 });
 
+// 3. LinkedIn Integration APIs
+app.get("/api/linkedin/profile", async (req, res) => {
+  const token = (req.query.token as string) || process.env.LINKEDIN_ACCESS_TOKEN;
+  if (!token) {
+    return res.json({ connected: false, error: "No LinkedIn access token found." });
+  }
+
+  try {
+    // Attempt standard /v2/me page
+    let profileResponse = await fetch("https://api.linkedin.com/v2/me", {
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    });
+
+    if (profileResponse.ok) {
+      const data = await profileResponse.json() as any;
+      const firstName = data.localizedFirstName || data.firstName?.localized?.["en_US"] || "LinkedIn User";
+      const lastName = data.localizedLastName || data.lastName?.localized?.["en_US"] || "";
+      return res.json({
+        connected: true,
+        displayName: `${firstName} ${lastName}`.trim(),
+        urn: `urn:li:person:${data.id}`,
+        id: data.id,
+        source: "v2/me"
+      });
+    }
+
+    // Try OIDC v2/userinfo
+    let oidcResponse = await fetch("https://api.linkedin.com/v2/userinfo", {
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    });
+
+    if (oidcResponse.ok) {
+      const data = await oidcResponse.json() as any;
+      return res.json({
+        connected: true,
+        displayName: data.name || data.given_name || "LinkedIn User",
+        urn: `urn:li:person:${data.sub}`,
+        id: data.sub,
+        picture: data.picture,
+        source: "v2/userinfo"
+      });
+    }
+
+    const oidcText = await oidcResponse.text();
+    console.error("LinkedIn Auth Failed. v2/me status:", profileResponse.status, "v2/userinfo text:", oidcText);
+    
+    return res.json({
+      connected: false,
+      error: `LinkedIn credentials invalid/expired (Status: v2/me ${profileResponse.status}, userinfo ${oidcResponse.status}).`,
+      details: oidcText
+    });
+  } catch (err: any) {
+    console.error("LinkedIn profile connection error:", err);
+    return res.json({
+      connected: false,
+      error: `Connection failure: ${err.message}`
+    });
+  }
+});
+
+app.post("/api/linkedin/post", async (req, res) => {
+  const { content, token: clientToken, urn: clientUrn } = req.body;
+  const token = clientToken || process.env.LINKEDIN_ACCESS_TOKEN;
+  
+  if (!content) {
+    return res.status(400).json({ error: "Post content is required." });
+  }
+  if (!token) {
+    return res.status(400).json({ error: "Access token is missing." });
+  }
+
+  let resolvedUrn = clientUrn;
+
+  // If urn isn't provided, fetch profile to get id first
+  if (!resolvedUrn) {
+    try {
+      const profileResponse = await fetch("https://api.linkedin.com/v2/me", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (profileResponse.ok) {
+        const data = await profileResponse.json() as any;
+        resolvedUrn = `urn:li:person:${data.id}`;
+      } else {
+        const oidcResponse = await fetch("https://api.linkedin.com/v2/userinfo", {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (oidcResponse.ok) {
+          const data = await oidcResponse.json() as any;
+          resolvedUrn = `urn:li:person:${data.sub}`;
+        }
+      }
+    } catch (e) {
+      console.warn("Could not auto-resolve LinkedIn URN:", e);
+    }
+  }
+
+  if (!resolvedUrn) {
+    return res.status(400).json({ error: "Could not retrieve your LinkedIn account details to specify the author." });
+  }
+
+  const payload = {
+    author: resolvedUrn,
+    lifecycleState: "PUBLISHED",
+    specificContent: {
+      "com.linkedin.ugc.ShareContent": {
+        shareCommentary: {
+          text: content
+        },
+        shareMediaCategory: "NONE"
+      }
+    },
+    visibility: {
+      "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
+    }
+  };
+
+  try {
+    const postResponse = await fetch("https://api.linkedin.com/v2/ugcPosts", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "X-Restli-Protocol-Version": "2.0.0"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const bodyText = await postResponse.text();
+    let parsedBody: any = null;
+    try {
+      parsedBody = JSON.parse(bodyText);
+    } catch (e) {}
+
+    if (postResponse.ok) {
+      return res.json({
+        success: true,
+        postId: parsedBody?.id || "urn:li:share:success",
+        message: "Your strategy content has been posted to LinkedIn successfully!"
+      });
+    } else {
+      console.error("LinkedIn post creation error status:", postResponse.status, "body:", bodyText);
+      return res.status(postResponse.status).json({
+        error: `LinkedIn API error (Status ${postResponse.status})`,
+        details: parsedBody || bodyText,
+        urnTried: resolvedUrn
+      });
+    }
+  } catch (err: any) {
+    console.error("LinkedIn post error:", err);
+    return res.status(500).json({
+      error: `Failed to transmit post to LinkedIn: ${err.message}`
+    });
+  }
+});
+
 // Serve static assets in production, handle SPA fallback
 if (process.env.NODE_ENV !== "production") {
   const startDev = async () => {

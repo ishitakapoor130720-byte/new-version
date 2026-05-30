@@ -3,7 +3,8 @@ import { MarketingStrategy, BusinessDetails, TimelineTask } from '../types';
 import { 
   Award, Shield, TrendingUp, Check, Copy, ExternalLink, Zap, 
   Target, Sliders, Users, Search, BookOpen, Clock, Play, FileText, 
-  CheckCircle2, AlertCircle, Sparkles, MessageSquare, Briefcase, HelpCircle, ArrowRight
+  CheckCircle2, AlertCircle, Sparkles, MessageSquare, Briefcase, HelpCircle, ArrowRight,
+  Linkedin, Send, Share2
 } from 'lucide-react';
 
 interface DashboardViewProps {
@@ -98,6 +99,75 @@ export default function DashboardView({ strategy: rawStrategy, inputs, onOpenCon
 
   const [activeTab, setActiveTab] = useState<'audit' | 'competitors' | 'roadmap' | 'content' | 'ads' | 'seo' | 'leads'>('audit');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // LinkedIn Live Integration states
+  const [linkedinProfile, setLinkedinProfile] = useState<any>(null);
+  const [linkedinLoading, setLinkedinLoading] = useState(true);
+  const [manualToken, setManualToken] = useState("");
+  const [showTokenInput, setShowTokenInput] = useState(false);
+  const [postContent, setPostContent] = useState("");
+  const [publishStatus, setPublishStatus] = useState<'idle' | 'publishing' | 'success' | 'error'>('idle');
+  const [publishResult, setPublishResult] = useState<any>(null);
+
+  const fetchProfile = React.useCallback(async (tokenOverride?: string) => {
+    setLinkedinLoading(true);
+    try {
+      const url = tokenOverride ? `/api/linkedin/profile?token=${encodeURIComponent(tokenOverride)}` : '/api/linkedin/profile';
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setLinkedinProfile(data);
+      } else {
+        setLinkedinProfile({ connected: false, error: 'Failed to communicate with authorization server.' });
+      }
+    } catch (err: any) {
+      setLinkedinProfile({ connected: false, error: err.message || 'Network error fetching profile.' });
+    } finally {
+      setLinkedinLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchProfile();
+  }, [fetchProfile]);
+
+  const handlePublishToLinkedIn = async () => {
+    if (!postContent.trim()) return;
+    setPublishStatus('publishing');
+    setPublishResult(null);
+
+    try {
+      const response = await fetch('/api/linkedin/post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: postContent,
+          token: manualToken || undefined,
+          urn: linkedinProfile?.urn || undefined
+        })
+      });
+
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setPublishStatus('success');
+        setPublishResult(data);
+      } else {
+        setPublishStatus('error');
+        setPublishResult(data);
+      }
+    } catch (err: any) {
+      setPublishStatus('error');
+      setPublishResult({ error: err.message || 'Network request failed' });
+    }
+  };
+
+  const handleSendToPublisher = (text: string) => {
+    setPostContent(text);
+    const el = document.getElementById('linkedin-publish-box');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
   // Roadmap tasks interactive states
   const [completedRoadmapTasks, setCompletedRoadmapTasks] = useState<Record<string, boolean>>({});
@@ -644,21 +714,31 @@ export default function DashboardView({ strategy: rawStrategy, inputs, onOpenCon
                     <Play className="h-4.5 w-4.5 text-teal-400" />
                     <span>Viral Reels Playbooks (High-Converting Concepts)</span>
                   </h3>
-                  <p className="text-[10px] text-slate-500 mt-1">Copy scripts to paste directly into your storyboard drafts:</p>
+                  <p className="text-[10px] text-slate-500 mt-1">Copy scripts or send them directly to the LinkedIn Publisher Console below:</p>
                 </div>
 
                 <div className="space-y-3.5 max-h-[500px] overflow-y-auto pr-1">
                   {strategy.contentStrategy.reels.map((reel, idx) => (
-                    <div key={idx} className="bg-slate-900/30 rounded-xl border border-slate-800 p-4 space-y-2.5 relative">
+                    <div key={idx} className="bg-slate-900/30 rounded-xl border border-slate-800 p-4 space-y-2.5 relative group">
                       <div className="flex items-center justify-between pb-2 border-b border-slate-850">
                         <span className="text-[10px] font-mono uppercase bg-teal-500/10 text-teal-300 font-bold px-2 py-0.5 rounded">Reel Script Idea #{idx + 1}</span>
-                        <button
-                          onClick={() => handleCopy(`HOOK: ${reel.hook}\nCONCEPT: ${reel.concept}\nCTA: ${reel.cta}`, `reel-${idx}`)}
-                          className="text-slate-500 hover:text-slate-300 transition-colors"
-                          title="Copy script"
-                        >
-                          {copiedId === `reel-${idx}` ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-                        </button>
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => handleSendToPublisher(`🎬 BuyZently AI Reel Concept #${idx + 1}\n\n📌 HOOK:\n"${reel.hook}"\n\n💡 VISUAL CONCEPT:\n${reel.concept}\n\n🔥 PERSISTENT CALL TO ACTION:\n${reel.cta}\n\n#marketing #growth #b2b #strategy`)}
+                            className="inline-flex items-center gap-1 text-[10px] bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded transition cursor-pointer"
+                            title="Load into LinkedIn draft editor"
+                          >
+                            <Linkedin className="h-3 w-3" />
+                            <span>Post Draft</span>
+                          </button>
+                          <button
+                            onClick={() => handleCopy(`HOOK: ${reel.hook}\nCONCEPT: ${reel.concept}\nCTA: ${reel.cta}`, `reel-${idx}`)}
+                            className="text-slate-500 hover:text-slate-300 transition-colors"
+                            title="Copy script"
+                          >
+                            {copiedId === `reel-${idx}` ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                          </button>
+                        </div>
                       </div>
 
                       <div className="space-y-2 text-xs">
@@ -691,8 +771,18 @@ export default function DashboardView({ strategy: rawStrategy, inputs, onOpenCon
                   <div className="space-y-3.5 max-h-[280px] overflow-y-auto pr-1">
                     {strategy.contentStrategy.carousels.map((car, idx) => (
                       <div key={idx} className="bg-slate-950/40 rounded-lg p-3 border border-slate-850 space-y-2">
-                        <div className="text-xs font-bold text-slate-200">{car.title}</div>
-                        <ul className="space-y-1.5 pl-3 border-l border-slate-800 text-[11px] text-slate-400">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-xs font-bold text-slate-200 max-w-[70%] truncate">{car.title}</div>
+                          <button
+                            onClick={() => handleSendToPublisher(`📊 BuyZently AI Carousel: ${car.title}\n\n${car.slides.map((s, i) => `Slide ${i + 1}: ${s}`).join('\n')}\n\n🎯 CTA:\n${car.cta}\n\n#consulting #growthacademy`)}
+                            className="text-blue-400 hover:text-blue-300 text-[10px] font-mono flex items-center gap-1 cursor-pointer"
+                            title="Send to Live Editor"
+                          >
+                            <Linkedin className="h-2.5 w-2.5" />
+                            <span>Draft</span>
+                          </button>
+                        </div>
+                        <ul className="space-y-1.5 pl-3 border-l border-slate-800 text-[11px] text-slate-400 font-light">
                           {car.slides.map((slide, sIdx) => (
                             <li key={sIdx}>{slide}</li>
                           ))}
@@ -712,22 +802,36 @@ export default function DashboardView({ strategy: rawStrategy, inputs, onOpenCon
 
                   <div className="space-y-3.5">
                     <div>
-                      <span className="text-[9px] font-mono text-slate-500 uppercase block mb-1">Viral Hooks:</span>
+                      <span className="text-[9px] font-mono text-slate-500 uppercase block mb-1">Viral Hooks (Hover to post):</span>
                       <div className="space-y-1.5">
                         {strategy.contentStrategy.viralHooks.map((h, idx) => (
-                          <div key={idx} className="text-[11px] bg-slate-950/40 border border-slate-850 px-2.5 py-1.5 rounded text-slate-300 italic">
-                            "{h}"
+                          <div key={idx} className="text-[11px] bg-slate-950/40 border border-slate-850 px-2.5 py-1.5 rounded text-slate-300 italic flex items-center justify-between gap-1 group">
+                            <span className="flex-1">"{h}"</span>
+                            <button
+                              onClick={() => handleSendToPublisher(`🔥 Quick Insider Hook:\n"${h}"\n\nScale up your digital agency and outpace standard competitors comfortably. Let's arrange a customized expansion roadmap call today. #growth`)}
+                              className="text-blue-400 hover:text-blue-300 ml-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                              title="Draft Hook to LinkedIn"
+                            >
+                              <Linkedin className="h-3 w-3" />
+                            </button>
                           </div>
                         ))}
                       </div>
                     </div>
 
                     <div>
-                      <span className="text-[9px] font-mono text-slate-500 uppercase block mb-1">High-conversions CTAs:</span>
+                      <span className="text-[9px] font-mono text-slate-500 uppercase block mb-1">High-conversions CTAs (Hover to post):</span>
                       <div className="space-y-1.5">
                         {strategy.contentStrategy.viralCtas.map((cta, idx) => (
-                          <div key={idx} className="text-[11px] bg-slate-950/40 border border-slate-850 px-2.5 py-1.5 rounded text-slate-300 font-medium">
-                            {cta}
+                          <div key={idx} className="text-[11px] bg-slate-950/40 border border-slate-850 px-2.5 py-1.5 rounded text-slate-300 font-medium flex items-center justify-between gap-1 group">
+                            <span className="flex-1">{cta}</span>
+                            <button
+                              onClick={() => handleSendToPublisher(`⚡ Strategy Takeaway:\n\n👉 ${cta}\n\nOur automated CRM pipelines route incoming inquiries in under 4 seconds to unlock 300%+ higher bookings. Speak with a BuyZently expert today! #leads`)}
+                              className="text-blue-400 hover:text-blue-300 ml-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                              title="Draft CTA to LinkedIn"
+                            >
+                              <Linkedin className="h-3 w-3" />
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -735,6 +839,184 @@ export default function DashboardView({ strategy: rawStrategy, inputs, onOpenCon
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* LIVE LINKEDIN PUBLISHER BOARD PANEL */}
+            <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-6 space-y-5" id="linkedin-publish-box">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-10 w-10 bg-blue-600/10 text-blue-400 rounded-xl flex items-center justify-center border border-blue-500/20">
+                    <Linkedin className="h-5.5 w-5.5" />
+                  </div>
+                  <div>
+                    <h3 className="font-display font-bold text-sm text-slate-100 flex items-center gap-1.5">
+                      LinkedIn Live Publisher Console
+                      {linkedinLoading ? (
+                        <span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse ml-1.5" />
+                      ) : linkedinProfile?.connected ? (
+                        <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-md shadow-emerald-500/20 ml-1.5" id="li-connected-indicator" />
+                      ) : (
+                        <span className="inline-block w-2.5 h-2.5 rounded-full bg-rose-500 shadow-md shadow-rose-500/20 ml-1.5" id="li-disconnected-indicator" />
+                      )}
+                    </h3>
+                    <p className="text-[11px] text-slate-400">Post your AI-generated growth strategies & scripts directly to LinkedIn.</p>
+                  </div>
+                </div>
+
+                {/* Connection Badge */}
+                <div className="text-xs">
+                  {linkedinLoading ? (
+                    <span className="text-slate-500 font-mono text-[10px]">Loading status...</span>
+                  ) : linkedinProfile?.connected ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-mono uppercase">
+                        Active Profile: {linkedinProfile.displayName}
+                      </span>
+                      <button 
+                        onClick={() => setShowTokenInput(!showTokenInput)} 
+                        className="text-[10px] text-slate-500 hover:text-slate-300 underline cursor-pointer"
+                      >
+                        Settings
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] bg-rose-500/10 text-rose-400 border border-rose-500/20 px-2 py-0.5 rounded font-mono uppercase">
+                        Not Configured
+                      </span>
+                      <button 
+                        onClick={() => setShowTokenInput(true)} 
+                        className="text-[10px] bg-blue-500/15 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded hover:bg-blue-500/25 transition-colors cursor-pointer"
+                      >
+                        Configure Token
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Dynamic Token Config Fields */}
+              {showTokenInput && (
+                <div className="p-4 bg-slate-950/65 rounded-xl border border-slate-800/80 space-y-2.5">
+                  <div className="text-xs font-semibold text-slate-300">Override LinkedIn Access Token</div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    We configured your provided token in the server configuration. To test or swap to a separate profile's access token (Oauth 2.0 starting with `AQ.`), specify it below:
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="password"
+                      value={manualToken}
+                      onChange={(e) => setManualToken(e.target.value)}
+                      placeholder="Enter LinkedIn Token (AQ.Ab8RN6...)"
+                      className="flex-1 text-xs bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-slate-200 font-mono outline-none focus:border-blue-500/40"
+                    />
+                    <button
+                      onClick={() => {
+                        fetchProfile(manualToken || undefined);
+                        setShowTokenInput(false);
+                      }}
+                      className="bg-blue-600 hover:bg-blue-500 text-slate-100 text-xs px-3.5 py-1.5 rounded transition-colors cursor-pointer font-medium"
+                    >
+                      Verify Token
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+                {/* Draft text Area */}
+                <div className="md:col-span-8 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs text-slate-400 block font-medium">Post Caption Editor</label>
+                    <span className="text-[10px] text-slate-500 font-mono bg-slate-950 px-2 py-0.5 rounded border border-slate-850">{postContent.length} characters</span>
+                  </div>
+                  <textarea
+                    value={postContent}
+                    onChange={(e) => setPostContent(e.target.value)}
+                    placeholder="Draft text here... Tip: Click on any 'Post Draft' or 'Draft' shortcut button above to instantly load AI briefs and carousels into this composer area."
+                    className="w-full h-44 bg-slate-950 rounded-xl border border-slate-800 p-3.5 text-slate-100 text-xs leading-relaxed outline-none focus:border-blue-500/50 resize-y"
+                  />
+                </div>
+
+                {/* Operations side panel */}
+                <div className="md:col-span-4 bg-slate-950/45 border border-slate-850 rounded-xl p-4.5 flex flex-col justify-between space-y-4">
+                  <div className="space-y-3">
+                    <h4 className="text-[10px] font-mono text-slate-500 uppercase tracking-widest font-bold">Post Parameters</h4>
+                    
+                    <div className="space-y-1.5 text-xs text-slate-400">
+                      <div className="flex items-center justify-between border-b border-slate-850/60 pb-1.5">
+                        <span className="text-[11px] font-mono">Scope:</span>
+                        <span className="text-slate-300 font-medium text-[11px]">urn:li:person</span>
+                      </div>
+                      <div className="flex items-center justify-between border-b border-slate-850/60 pb-1.5">
+                        <span className="text-[11px] font-mono">Visibility:</span>
+                        <span className="text-slate-305 text-emerald-400 font-semibold text-[11px]">PUBLIC</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-mono">Endpoint:</span>
+                        <span className="text-slate-400 text-[11px] font-mono">/v2/ugcPosts</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <button
+                      onClick={handlePublishToLinkedIn}
+                      disabled={!postContent.trim() || publishStatus === 'publishing'}
+                      className="w-full bg-gradient-to-r from-blue-600 to-blue-500 disabled:from-slate-800 disabled:to-slate-900 text-slate-50 flex items-center justify-center gap-1.5 font-bold text-xs py-2.5 rounded-lg cursor-pointer hover:from-blue-500 hover:to-blue-400 disabled:text-slate-500 disabled:cursor-not-allowed transition-all shadow-md active:scale-[0.98]"
+                    >
+                      <Send className="h-4 w-4" />
+                      <span>{publishStatus === 'publishing' ? 'Transmitting...' : 'Post on LinkedIn Now'}</span>
+                    </button>
+                    <p className="text-[9px] text-center text-slate-500 leading-relaxed italic">Posts on your authorized profile update feed.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Status and logs report box */}
+              {publishStatus !== 'idle' && (
+                <div className={`p-4 rounded-xl text-xs space-y-2 border ${
+                  publishStatus === 'success' 
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' 
+                    : publishStatus === 'publishing' 
+                      ? 'bg-blue-500/10 border-blue-500/30 text-blue-300' 
+                      : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                }`}>
+                  <div className="flex items-center gap-2 font-semibold">
+                    {publishStatus === 'success' && <CheckCircle2 className="h-4 w-4 text-emerald-400" />}
+                    {publishStatus === 'publishing' && <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-blue-400 animate-spin" />}
+                    {publishStatus === 'error' && <AlertCircle className="h-4 w-4 text-rose-450" />}
+                    
+                    <span>
+                      {publishStatus === 'success' && 'Integration Success: Feed Transmitted!'}
+                      {publishStatus === 'publishing' && 'Transmitting request payloads directly to LinkedIn servers...'}
+                      {publishStatus === 'error' && 'Execution Rejected / API Connection Failure'}
+                    </span>
+                  </div>
+
+                  {publishStatus === 'success' && publishResult && (
+                    <div className="space-y-1 mt-1 text-[11px] text-slate-400 font-mono">
+                      <div>Resource Posted URN: <span className="text-slate-200">{publishResult.postId}</span></div>
+                      <div>Details: <span className="text-slate-200">{publishResult.message}</span></div>
+                      <div className="text-[10px] text-emerald-400 mt-2 font-sans font-medium">✓ Successfully posted! Click through to your LinkedIn profile feed to verify the updates.</div>
+                    </div>
+                  )}
+
+                  {publishStatus === 'error' && publishResult && (
+                    <div className="space-y-1.5 mt-1 text-[11px] font-mono text-slate-400">
+                      <div>Error message: <span className="text-rose-300">{publishResult.error || 'Request Denied'}</span></div>
+                      {publishResult.details && (
+                        <div className="text-[10px] max-h-24 overflow-y-auto bg-slate-950 p-2 rounded text-slate-500 mt-1 border border-rose-950/20">
+                          Raw payload response: {typeof publishResult.details === 'object' ? JSON.stringify(publishResult.details, null, 2) : String(publishResult.details)}
+                        </div>
+                      )}
+                      <div className="text-[10px] text-amber-500/80 mt-1.5 italic font-sans">
+                        Troubleshooting Help: Ensure the provided credentials has the `w_member_social` permission explicitly configured.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
