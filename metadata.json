@@ -1,0 +1,6 @@
+{
+  "name": "BuyZently AI",
+  "description": "An advanced AI-powered Marketing Strategist, Competitor Analysis Expert, and Business Growth Consultant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
